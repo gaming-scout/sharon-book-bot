@@ -1,0 +1,9 @@
+python-telegram-bot[job-queue]
+google-genai
+pytz
+nest_asyncio
+edge-tts
+pydub
+requests
+moviepy
+Pillow
