@@ -46,7 +46,7 @@ def baca_dan_rangkum_pdf(file_path):
         time.sleep(5)
     raise Exception("Server Gemini sedang sibuk. Silakan coba lagi nanti.")
 
-async def buat_audio_lengkap(naskah: str, mood: str, nama_file_output: str):
+async def buat_audio_lengkap(naskah: str, nama_file_output: str):
     file_suara = "voiceover_temp.mp3"
     berhasil_eleven = False
 
@@ -85,7 +85,7 @@ async def buat_audio_lengkap(naskah: str, mood: str, nama_file_output: str):
         os.remove(nama_file_output)
     os.rename(file_suara, nama_file_output)
 
-def buat_beberapa_gambar(judul: str, jumlah: int = 6):
+def buat_beberapa_gambar(jumlah: int = 6):
     file_gambar_list = []
     warna_cadangan = [(30, 58, 138), (76, 29, 149), (15, 118, 110), (51, 65, 85), (124, 45, 18), (67, 56, 202)]
     
@@ -115,11 +115,11 @@ def buat_beberapa_gambar(judul: str, jumlah: int = 6):
             
     return file_gambar_list
 
-async def buat_video_mp4_dinamis(file_audio: str, judul_buku: str, file_video_output: str):
+async def buat_video_mp4_dinamis(file_audio: str, file_video_output: str):
     audio_clip = AudioFileClip(file_audio)
     total_durasi = audio_clip.duration
     jumlah_scene = 6
-    file_gambar_list = buat_beberapa_gambar(judul_buku, jumlah_scene)
+    file_gambar_list = buat_beberapa_gambar(jumlah_scene)
     durasi_per_scene = total_durasi / jumlah_scene
     klip_scene = [ImageClip(img).set_duration(durasi_per_scene).resize(lambda t: 1.0 + 0.05 * (t / durasi_per_scene)) for img in file_gambar_list]
     video_gabungan = concatenate_videoclips(klip_scene, method="compose")
@@ -129,12 +129,12 @@ async def buat_video_mp4_dinamis(file_audio: str, judul_buku: str, file_video_ou
     video_final.close()
 
 async def mulai_atau_tes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📚 **Bot Cloud (ElevenLabs & Bersih Error) Aktif!**\n\nSilakan kirim file PDF buku Anda langsung ke chat ini.")
+    await update.message.reply_text("📚 **Bot Cloud Aktif!**\n\nSilakan kirim file PDF buku Anda langsung ke chat ini.")
 
 async def terima_file_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global buku_path_tersimpan
     doc = update.message.document
-    if not doc.file_name.endswith('.pdf'):
+    if not doc or not doc.file_name.lower().endswith('.pdf'):
         await update.message.reply_text("⚠️ Harap kirimkan file berformat PDF.")
         return
     await update.message.reply_text("📥 Menerima file PDF buku Anda...")
@@ -155,14 +155,16 @@ async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         teks_ai = await asyncio.to_thread(baca_dan_rangkum_pdf, buku_path_tersimpan)
         pecah = teks_ai.split("\n", 1)
-        mood = pecah[0].strip().lower()
         naskah = pecah[1].strip() if len(pecah) > 1 else pecah[0]
+        
         await context.bot.send_message(chat_id=chat_id, text="🎙️ Merekam suara narator...")
         file_audio = "ringkasan_audio.mp3"
-        await buat_audio_lengkap(naskah, mood, file_audio)
+        await buat_audio_lengkap(naskah, file_audio)
+        
         await context.bot.send_message(chat_id=chat_id, text="🎬 Merender Video MP4 berdurasi penuh dengan latar belakang dinamis...")
         file_video = "video_full_buku.mp4"
-        await buat_video_mp4_dinamis(file_audio, "Buku Pilihan Anda", file_video)
+        await buat_video_mp4_dinamis(file_audio, file_video)
+        
         with open(file_video, "rb") as video:
             await context.bot.send_video(chat_id=chat_id, video=video, caption="🎉 **Video Summary Full Buku Selesai!**")
     except Exception as e:
@@ -170,10 +172,11 @@ async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def jalankan_bot():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler(["start", "tes"], mulai_atau_tes))
-    app.add_handler(MessageHandler(filters.Document.ALL, terima_file_pdf))
+    app.add_handler(CommandHandler("start", mulai_atau_tes))
+    app.add_handler(CommandHandler("tes", mulai_atau_tes))
+    app.add_handler(MessageHandler(filters.Document.PDF, terima_file_pdf))
     app.add_handler(CallbackQueryHandler(tombol_pdf_diklik))
-    print("🤖 BOT CLOUD BERSIH SUDAH HIDUP!")
+    print("🤖 BOT CLOUD SIAP MENERIMA PDF!")
     app.run_polling()
 
 if __name__ == "__main__":
