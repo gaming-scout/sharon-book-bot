@@ -7,7 +7,6 @@ import nest_asyncio
 import requests
 from io import BytesIO
 from PIL import Image
-from pydub import AudioSegment
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
@@ -23,12 +22,6 @@ VOICE_ID = os.getenv("VOICE_ID")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 buku_path_tersimpan = None
-
-DAFTAR_BACKSOUND = {
-    "inspirational": "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
-    "calm": "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3",
-    "serious": "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3"
-}
 
 def baca_dan_rangkum_pdf(file_path):
     berkas_terupload = client.files.upload(file=file_path)
@@ -55,9 +48,8 @@ def baca_dan_rangkum_pdf(file_path):
 
 async def buat_audio_lengkap(naskah: str, mood: str, nama_file_output: str):
     file_suara = "voiceover_temp.mp3"
-    file_musik = "bgm_temp.mp3"
-
     berhasil_eleven = False
+
     if ELEVENLABS_API_KEY and VOICE_ID:
         try:
             url_eleven = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
@@ -89,22 +81,9 @@ async def buat_audio_lengkap(naskah: str, mood: str, nama_file_output: str):
         komunikasi_tts = edge_tts.Communicate(naskah, voice="id-ID-ArdiNeural", rate="-5%")
         await komunikasi_tts.save(file_suara)
 
-    try:
-        url_musik = DAFTAR_BACKSOUND.get(mood, DAFTAR_BACKSOUND["inspirational"])
-        r = requests.get(url_musik, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        with open(file_musik, "wb") as f:
-            f.write(r.content)
-        suara_narator = AudioSegment.from_file(file_suara)
-        musik_latar = AudioSegment.from_file(file_musik) - 18
-        while len(musik_latar) < len(suara_narator) + 3000:
-            musik_latar += musik_latar
-        musik_latar = musik_latar[:len(suara_narator) + 2000].fade_out(2000)
-        audio_gabungan = musik_latar.overlay(suara_narator, position=500)
-        audio_gabungan.export(nama_file_output, format="mp3")
-    except:
-        if os.path.exists(nama_file_output):
-            os.remove(nama_file_output)
-        os.rename(file_suara, nama_file_output)
+    if os.path.exists(nama_file_output):
+        os.remove(nama_file_output)
+    os.rename(file_suara, nama_file_output)
 
 def buat_beberapa_gambar(judul: str, jumlah: int = 6):
     file_gambar_list = []
@@ -150,7 +129,7 @@ async def buat_video_mp4_dinamis(file_audio: str, judul_buku: str, file_video_ou
     video_final.close()
 
 async def mulai_atau_tes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📚 **Bot Cloud (ElevenLabs) Aktif!**\n\nSilakan kirim file PDF buku Anda langsung ke chat ini.")
+    await update.message.reply_text("📚 **Bot Cloud (ElevenLabs & Bersih Error) Aktif!**\n\nSilakan kirim file PDF buku Anda langsung ke chat ini.")
 
 async def terima_file_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global buku_path_tersimpan
@@ -178,9 +157,7 @@ async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pecah = teks_ai.split("\n", 1)
         mood = pecah[0].strip().lower()
         naskah = pecah[1].strip() if len(pecah) > 1 else pecah[0]
-        if mood not in ["inspirational", "calm", "serious"]:
-            mood = "inspirational"
-        await context.bot.send_message(chat_id=chat_id, text="🎙️ Merekam suara narator menggunakan ElevenLabs...")
+        await context.bot.send_message(chat_id=chat_id, text="🎙️ Merekam suara narator...")
         file_audio = "ringkasan_audio.mp3"
         await buat_audio_lengkap(naskah, mood, file_audio)
         await context.bot.send_message(chat_id=chat_id, text="🎬 Merender Video MP4 berdurasi penuh dengan latar belakang dinamis...")
@@ -196,7 +173,7 @@ async def jalankan_bot():
     app.add_handler(CommandHandler(["start", "tes"], mulai_atau_tes))
     app.add_handler(MessageHandler(filters.Document.ALL, terima_file_pdf))
     app.add_handler(CallbackQueryHandler(tombol_pdf_diklik))
-    print("🤖 BOT CLOUD (ELEVENLABS) SUDAH HIDUP!")
+    print("🤖 BOT CLOUD BERSIH SUDAH HIDUP!")
     app.run_polling()
 
 if __name__ == "__main__":
