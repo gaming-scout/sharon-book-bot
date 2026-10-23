@@ -4,6 +4,7 @@ pytz
 nest_asyncio
 edge-tts
 pydub
+pyaudioop
 requests
 moviepy
 Pillow
