@@ -47,7 +47,7 @@ def baca_dan_rangkum_pdf(file_path):
     5. Di baris paling pertama, tulis salah satu mood musik ini saja: INSPIRATIONAL atau CALM atau SERIOUS, lalu ganti baris untuk isi naskahnya.
     """
     
-    # PERBAIKAN: Daftar semua varian nama agar pasti ada yang tembus
+    # Daftar semua varian nama model untuk menghindari error 404
     model_list = [
         "gemini-1.5-flash-latest",
         "gemini-1.5-pro-latest",
@@ -62,7 +62,6 @@ def baca_dan_rangkum_pdf(file_path):
         mime_type="application/pdf"
     )
     
-    # Loop ini akan mencoba semua nama model satu per satu
     for m in model_list:
         try:
             print(f"Mencoba menggunakan model: {m}...")
@@ -76,9 +75,14 @@ def baca_dan_rangkum_pdf(file_path):
         except Exception as e:
             pesan_error_asli = str(e)
             print(f"Gagal di {m}: {pesan_error_asli}")
-            time.sleep(2) # Jeda sejenak sebelum mencoba model berikutnya
+            time.sleep(2)
             
     raise Exception(f"Semua model gagal diakses. Detail: {pesan_error_asli}")
+
+# Kata 'async' wajib ada di sini karena menggunakan 'await' di dalamnya
+async def buat_audio_lengkap(naskah: str, nama_file_output: str):
+    file_suara = "voiceover_temp.mp3"
+    berhasil_eleven = False
 
     if ELEVENLABS_API_KEY and VOICE_ID:
         try:
@@ -202,7 +206,6 @@ async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Gagal memproses buku: {e}")
 
 def jalankan_bot():
-    """Fungsi pembangun dan penjalan bot. Dibuat sinkronus (tanpa async) untuk menghindari konflik event loop."""
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", mulai_atau_tes))
     app.add_handler(CommandHandler("tes", mulai_atau_tes))
@@ -214,5 +217,4 @@ def jalankan_bot():
     app.run_polling()
 
 if __name__ == "__main__":
-    # Eksekusi langsung tanpa asyncio.run()
     jalankan_bot()
