@@ -26,15 +26,17 @@ buku_path_tersimpan = None
 
 def baca_dan_rangkum_pdf(file_path):
     print("Mengunggah PDF ke Gemini...")
-    berkas_terupload = client.files.upload(path=file_path)
+    # 1. Simpan file hasil upload di variabel utama yang TIDAK BOLEH ditimpa
+    berkas_utama = client.files.upload(path=file_path)
     
-    # PERBAIKAN: Hapus .name pada berkas_terupload.state
-    while berkas_terupload.state == "PROCESSING":
+    # 2. Gunakan variabel sementara (cek_file) untuk memeriksa statusnya
+    cek_file = client.files.get(name=berkas_utama.name)
+    while cek_file.state == "PROCESSING":
         print("Menunggu PDF diproses oleh Gemini...")
         time.sleep(3)
-        berkas_terupload = client.files.get(name=berkas_terupload.name)
+        cek_file = client.files.get(name=berkas_utama.name)
         
-    if berkas_terupload.state == "FAILED":
+    if cek_file.state == "FAILED":
         raise Exception("Server Gemini gagal memproses dokumen PDF ini.")
 
     prompt = """
@@ -53,7 +55,11 @@ def baca_dan_rangkum_pdf(file_path):
     for attempt in range(3):
         for m in model_list:
             try:
-                response = client.models.generate_content(model=m, contents=[berkas_terupload, prompt])
+                # 3. Gunakan berkas_utama yang masih utuh datanya
+                response = client.models.generate_content(
+                    model=m, 
+                    contents=[berkas_utama, prompt]
+                )
                 if response.text:
                     return response.text.strip()
             except Exception as e:
@@ -63,24 +69,6 @@ def baca_dan_rangkum_pdf(file_path):
         time.sleep(5)
         
     raise Exception(f"Gagal memproses AI. Detail: {pesan_error_asli}")
-    
-    model_list = ["gemini-1.5-flash"]
-    pesan_error_asli = ""
-    
-    for attempt in range(3):
-        for m in model_list:
-            try:
-                response = client.models.generate_content(model=m, contents=[berkas_terupload, prompt])
-                if response.text:
-                    return response.text.strip()
-            except Exception as e:
-                pesan_error_asli = str(e)
-                print(f"Percobaan gagal pada model {m}: {pesan_error_asli}")
-                time.sleep(3)
-        time.sleep(5)
-        
-    raise Exception(f"Gagal memproses AI. Detail: {pesan_error_asli}")
-
 async def buat_audio_lengkap(naskah: str, nama_file_output: str):
     file_suara = "voiceover_temp.mp3"
     berhasil_eleven = False
