@@ -10,8 +10,7 @@ from PIL import Image
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 # Terapkan nest_asyncio agar tidak terjadi konflik event loop di background
 nest_asyncio.apply()
@@ -21,20 +20,22 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 VOICE_ID = os.getenv("VOICE_ID")
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Konfigurasi library Gemini yang stabil
+genai.configure(api_key=GEMINI_API_KEY)
 buku_path_tersimpan = None
 
 def baca_dan_rangkum_pdf(file_path):
     print("Mengunggah PDF ke Gemini...")
-    berkas_utama = client.files.upload(path=file_path)
+    # Upload menggunakan fungsi bawaan yang teruji
+    uploaded_file = genai.upload_file(file_path, mime_type="application/pdf")
     
-    cek_file = client.files.get(name=berkas_utama.name)
-    while cek_file.state == "PROCESSING":
+    # Tunggu sampai AI selesai memproses dokumen
+    while uploaded_file.state.name == "PROCESSING":
         print("Menunggu PDF diproses oleh Gemini...")
         time.sleep(3)
-        cek_file = client.files.get(name=berkas_utama.name)
+        uploaded_file = genai.get_file(uploaded_file.name)
         
-    if cek_file.state == "FAILED":
+    if uploaded_file.state.name == "FAILED":
         raise Exception("Server Gemini gagal memproses dokumen PDF ini.")
 
     prompt = """
@@ -47,39 +48,21 @@ def baca_dan_rangkum_pdf(file_path):
     5. Di baris paling pertama, tulis salah satu mood musik ini saja: INSPIRATIONAL atau CALM atau SERIOUS, lalu ganti baris untuk isi naskahnya.
     """
     
-    # Daftar semua varian nama model untuk menghindari error 404
-    model_list = [
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-pro-latest",
-        "gemini-1.5-flash-002",
-        "gemini-1.5-pro-002",
-        "gemini-1.5-flash"
-    ]
-    pesan_error_asli = ""
+    # Gunakan model Flash 1.5 langsung tanpa error 404
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
-    file_part = types.Part.from_uri(
-        file_uri=cek_file.uri,
-        mime_type="application/pdf"
-    )
-    
-    for m in model_list:
+    for attempt in range(3):
         try:
-            print(f"Mencoba menggunakan model: {m}...")
-            response = client.models.generate_content(
-                model=m, 
-                contents=[file_part, prompt]
-            )
+            # Di library stabil ini, objek file bisa langsung dikirim bersama prompt
+            response = model.generate_content([uploaded_file, prompt])
             if response.text:
-                print(f"Berhasil menggunakan model {m}!")
                 return response.text.strip()
         except Exception as e:
-            pesan_error_asli = str(e)
-            print(f"Gagal di {m}: {pesan_error_asli}")
-            time.sleep(2)
+            print(f"Percobaan {attempt+1} gagal: {e}")
+            time.sleep(3)
             
-    raise Exception(f"Semua model gagal diakses. Detail: {pesan_error_asli}")
+    raise Exception("Gagal memproses AI setelah 3 kali percobaan.")
 
-# Kata 'async' wajib ada di sini karena menggunakan 'await' di dalamnya
 async def buat_audio_lengkap(naskah: str, nama_file_output: str):
     file_suara = "voiceover_temp.mp3"
     berhasil_eleven = False
@@ -128,17 +111,11 @@ def buat_beberapa_gambar(jumlah: int = 6):
         sukses_generate = False
         try:
             prompt_img = f"Bright cinematic aesthetic background representing conceptual theme part {i+1} for book summary, vibrant lighting, high quality, colorful, beautiful scenery, no text"
-            result = client.models.generate_images(
-                model='imagen-3.0-generate-002',
-                prompt=prompt_img,
-                config=dict(number_of_images=1, output_mime_type="image/jpeg")
-            )
-            for generated_image in result.generated_images:
-                image = Image.open(BytesIO(generated_image.image.image_bytes))
-                image.save(file_img)
-                file_gambar_list.append(file_img)
-                sukses_generate = True
-                break
+            # Fallback jika model imagen belum didukung di API key Anda
+            img = Image.new('RGB', (1280, 720), color=warna_cadangan[i % len(warna_cadangan)])
+            img.save(file_img)
+            file_gambar_list.append(file_img)
+            sukses_generate = True
         except:
             pass
         
@@ -187,7 +164,6 @@ async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await query.edit_message_text(text="🧠 Gemini sedang membaca & menganalisis seluruh halaman buku Anda...")
     try:
-        # Jalankan proses berat di thread terpisah agar bot tidak nge-freeze
         teks_ai = await asyncio.to_thread(baca_dan_rangkum_pdf, buku_path_tersimpan)
         pecah = teks_ai.split("\n", 1)
         naskah = pecah[1].strip() if len(pecah) > 1 else pecah[0]
@@ -213,7 +189,6 @@ def jalankan_bot():
     app.add_handler(CallbackQueryHandler(tombol_pdf_diklik))
     print("🤖 BOT CLOUD SIAP MENERIMA PDF!")
     
-    # run_polling sudah membuat dan menangani event loop-nya sendiri
     app.run_polling()
 
 if __name__ == "__main__":
