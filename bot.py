@@ -24,7 +24,19 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 buku_path_tersimpan = None
 
 def baca_dan_rangkum_pdf(file_path):
+    print("Mengunggah PDF ke Gemini...")
     berkas_terupload = client.files.upload(path=file_path)
+    
+    # 1. Tunggu sampai Gemini selesai memproses PDF
+    while berkas_terupload.state.name == "PROCESSING":
+        print("Menunggu PDF diproses oleh Gemini...")
+        time.sleep(3)
+        # Refresh status file
+        berkas_terupload = client.files.get(name=berkas_terupload.name)
+        
+    if berkas_terupload.state.name == "FAILED":
+        raise Exception("Server Gemini gagal memproses dokumen PDF ini.")
+
     prompt = """
     Analisis buku lengkap ini dari awal sampai akhir. Buatlah naskah voiceover Bahasa Indonesia yang sangat mendalam, detail, dan komprehensif sebagai rangkuman utuh buku ini.
     Aturan Naskah:
@@ -34,17 +46,25 @@ def baca_dan_rangkum_pdf(file_path):
     4. JANGAN menulis keterangan [Musik masuk], tanda bintang (*), atau pagar (#). Tulis HANYA teks narasi bersih.
     5. Di baris paling pertama, tulis salah satu mood musik ini saja: INSPIRATIONAL atau CALM atau SERIOUS, lalu ganti baris untuk isi naskahnya.
     """
-    model_list = ["gemini-2.5-flash", "gemini-1.5-flash"]
+    
+    model_list = ["gemini-1.5-flash"] # Gunakan 1.5-flash yang lebih stabil untuk membaca PDF
+    pesan_error_asli = ""
+    
+    # 2. Loop percobaan dengan penangkap error yang jelas
     for attempt in range(3):
         for m in model_list:
             try:
                 response = client.models.generate_content(model=m, contents=[berkas_terupload, prompt])
                 if response.text:
                     return response.text.strip()
-            except:
-                time.sleep(2)
+            except Exception as e:
+                pesan_error_asli = str(e)
+                print(f"Percobaan gagal pada model {m}: {pesan_error_asli}")
+                time.sleep(3)
         time.sleep(5)
-    raise Exception("Server Gemini sedang sibuk. Silakan coba lagi nanti.")
+        
+    # Jika gagal 3 kali, tampilkan error aslinya ke Telegram
+    raise Exception(f"Gagal memproses AI. Detail: {pesan_error_asli}")
 
 async def buat_audio_lengkap(naskah: str, nama_file_output: str):
     file_suara = "voiceover_temp.mp3"
@@ -144,40 +164,4 @@ async def terima_file_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🎬 Mulai Rangkum & Buat Video", callback_data="proses_pdf")]]
     await update.message.reply_text(f"✅ File PDF **{doc.file_name}** berhasil diterima!\n\n👇 Klik tombol di bawah:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    chat_id = query.message.chat_id
-    if not buku_path_tersimpan or not os.path.exists(buku_path_tersimpan):
-        await query.edit_message_text(text="⚠️ File PDF tidak ditemukan. Kirim ulang file PDF Anda.")
-        return
-    await query.edit_message_text(text="🧠 Gemini sedang membaca & menganalisis seluruh halaman buku Anda...")
-    try:
-        teks_ai = await asyncio.to_thread(baca_dan_rangkum_pdf, buku_path_tersimpan)
-        pecah = teks_ai.split("\n", 1)
-        naskah = pecah[1].strip() if len(pecah) > 1 else pecah[0]
-        
-        await context.bot.send_message(chat_id=chat_id, text="🎙️ Merekam suara narator...")
-        file_audio = "ringkasan_audio.mp3"
-        await buat_audio_lengkap(naskah, file_audio)
-        
-        await context.bot.send_message(chat_id=chat_id, text="🎬 Merender Video MP4 berdurasi penuh dengan latar belakang dinamis...")
-        file_video = "video_full_buku.mp4"
-        await buat_video_mp4_dinamis(file_audio, file_video)
-        
-        with open(file_video, "rb") as video:
-            await context.bot.send_video(chat_id=chat_id, video=video, caption="🎉 **Video Summary Full Buku Selesai!**")
-    except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"⚠️ Gagal memproses buku: {e}")
-
-async def jalankan_bot():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", mulai_atau_tes))
-    app.add_handler(CommandHandler("tes", mulai_atau_tes))
-    app.add_handler(MessageHandler(filters.Document.PDF, terima_file_pdf))
-    app.add_handler(CallbackQueryHandler(tombol_pdf_diklik))
-    print("🤖 BOT CLOUD SIAP MENERIMA PDF!")
-    app.run_polling()
-
-if __name__ == "__main__":
-    asyncio.run(jalankan_bot())
+async def tombol_pdf_diklik(
