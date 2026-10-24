@@ -26,10 +26,9 @@ buku_path_tersimpan = None
 
 def baca_dan_rangkum_pdf(file_path):
     print("Mengunggah PDF ke Gemini...")
-    # 1. Simpan file hasil upload di variabel utama yang TIDAK BOLEH ditimpa
-    berkas_utama = client.files.upload(path=file_path)
+    # Gunakan pemanggilan langsung tanpa keyword 'path=' atau 'file='
+    berkas_utama = client.files.upload(file_path)
     
-    # 2. Gunakan variabel sementara (cek_file) untuk memeriksa statusnya
     cek_file = client.files.get(name=berkas_utama.name)
     while cek_file.state == "PROCESSING":
         print("Menunggu PDF diproses oleh Gemini...")
@@ -52,13 +51,20 @@ def baca_dan_rangkum_pdf(file_path):
     model_list = ["gemini-1.5-flash"]
     pesan_error_asli = ""
     
+    # PERBAIKAN: Bungkus file secara eksplisit menjadi tipe "Part" 
+    # agar SDK tidak bingung dan tidak mengirimkan data kosong.
+    file_part = types.Part.from_uri(
+        file_uri=cek_file.uri,
+        mime_type="application/pdf"
+    )
+    
     for attempt in range(3):
         for m in model_list:
             try:
-                # 3. Gunakan berkas_utama yang masih utuh datanya
+                # Masukkan file_part yang sudah dibungkus ke dalam contents
                 response = client.models.generate_content(
                     model=m, 
-                    contents=[berkas_utama, prompt]
+                    contents=[file_part, prompt]
                 )
                 if response.text:
                     return response.text.strip()
@@ -69,6 +75,7 @@ def baca_dan_rangkum_pdf(file_path):
         time.sleep(5)
         
     raise Exception(f"Gagal memproses AI. Detail: {pesan_error_asli}")
+
 async def buat_audio_lengkap(naskah: str, nama_file_output: str):
     file_suara = "voiceover_temp.mp3"
     berhasil_eleven = False
