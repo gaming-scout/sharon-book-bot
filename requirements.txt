@@ -1,10 +1,5 @@
-python-telegram-bot[job-queue]
-google-genai
-pytz
-nest_asyncio
-edge-tts
-requests
-moviepy
-Pillow
+python-telegram-bot==20.7
+moviepy==1.0.3
+Pillow==10.2.0
 
 
