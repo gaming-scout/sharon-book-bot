@@ -1,67 +1,65 @@
 import asyncio
-import datetime
 import os
 import time
-import pytz
 import nest_asyncio
 import requests
-from io import BytesIO
+from PyPDF2 import PdfReader
 from PIL import Image
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-import google.generativeai as genai
+from openai import OpenAI
 
 # Terapkan nest_asyncio agar tidak terjadi konflik event loop di background
 nest_asyncio.apply()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 VOICE_ID = os.getenv("VOICE_ID")
 
-# Konfigurasi library Gemini yang stabil
-genai.configure(api_key=GEMINI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY)
 buku_path_tersimpan = None
 
 def baca_dan_rangkum_pdf(file_path):
-    print("Mengunggah PDF ke Gemini...")
-    # Upload menggunakan fungsi bawaan yang teruji
-    uploaded_file = genai.upload_file(file_path, mime_type="application/pdf")
+    print("Membaca teks dari file PDF lokal...")
+    reader = PdfReader(file_path)
+    teks_lengkap = ""
     
-    # Tunggu sampai AI selesai memproses dokumen
-    while uploaded_file.state.name == "PROCESSING":
-        print("Menunggu PDF diproses oleh Gemini...")
-        time.sleep(3)
-        uploaded_file = genai.get_file(uploaded_file.name)
-        
-    if uploaded_file.state.name == "FAILED":
-        raise Exception("Server Gemini gagal memproses dokumen PDF ini.")
+    # Mengekstrak maksimal 100 halaman pertama agar efisien & aman dari limit
+    for i, page in enumerate(reader.pages):
+        if i >= 100:
+            break
+        teks_halaman = page.extract_text()
+        if teks_halaman:
+            teks_lengkap += teks_halaman + "\n"
 
-    prompt = """
-    Analisis buku lengkap ini dari awal sampai akhir. Buatlah naskah voiceover Bahasa Indonesia yang sangat mendalam, detail, dan komprehensif sebagai rangkuman utuh buku ini.
+    prompt = f"""
+    Analisis buku berikut ini secara mendalam. Buatlah naskah voiceover Bahasa Indonesia yang detail dan komprehensif sebagai rangkuman utuh buku ini.
     Aturan Naskah:
     1. Panjang naskah 500 - 700 kata agar durasi pembacaan narasi pas dan berbobot.
     2. Struktur: Pengantar/Premis Buku, Bedah Bab Utama & Konsep Inti, Studi Kasus/Pelajaran Nyata, Kesimpulan Reflektif.
     3. Gunakan bahasa yang mengalir, elegan, dan mudah dipahami.
     4. JANGAN menulis keterangan [Musik masuk], tanda bintang (*), atau pagar (#). Tulis HANYA teks narasi bersih.
     5. Di baris paling pertama, tulis salah satu mood musik ini saja: INSPIRATIONAL atau CALM atau SERIOUS, lalu ganti baris untuk isi naskahnya.
+    
+    Isi Buku (Teks Ekstraksi):
+    {teks_lengkap[:100000]}
     """
     
-    # Gunakan model Flash 1.5 langsung tanpa error 404
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
-    for attempt in range(3):
-        try:
-            # Di library stabil ini, objek file bisa langsung dikirim bersama prompt
-            response = model.generate_content([uploaded_file, prompt])
-            if response.text:
-                return response.text.strip()
-        except Exception as e:
-            print(f"Percobaan {attempt+1} gagal: {e}")
-            time.sleep(3)
-            
-    raise Exception("Gagal memproses AI setelah 3 kali percobaan.")
+    print("Mengirim teks ke OpenAI (GPT-4o-Mini) untuk dirangkum...")
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Anda adalah asisten penulis naskah video profesional dan ahli bedah buku."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        raise Exception(f"Gagal memproses AI OpenAI: {e}")
 
 async def buat_audio_lengkap(naskah: str, nama_file_output: str):
     file_suara = "voiceover_temp.mp3"
@@ -103,26 +101,15 @@ async def buat_audio_lengkap(naskah: str, nama_file_output: str):
     os.rename(file_suara, nama_file_output)
 
 def buat_beberapa_gambar(jumlah: int = 6):
+    # Karena Gemini Imagen dihapus, kita menggunakan background estetik warna solid yang bersih
     file_gambar_list = []
     warna_cadangan = [(30, 58, 138), (76, 29, 149), (15, 118, 110), (51, 65, 85), (124, 45, 18), (67, 56, 202)]
     
     for i in range(jumlah):
         file_img = f"bg_scene_{i}.jpg"
-        sukses_generate = False
-        try:
-            prompt_img = f"Bright cinematic aesthetic background representing conceptual theme part {i+1} for book summary, vibrant lighting, high quality, colorful, beautiful scenery, no text"
-            # Fallback jika model imagen belum didukung di API key Anda
-            img = Image.new('RGB', (1280, 720), color=warna_cadangan[i % len(warna_cadangan)])
-            img.save(file_img)
-            file_gambar_list.append(file_img)
-            sukses_generate = True
-        except:
-            pass
-        
-        if not sukses_generate:
-            img = Image.new('RGB', (1280, 720), color=warna_cadangan[i % len(warna_cadangan)])
-            img.save(file_img)
-            file_gambar_list.append(file_img)
+        img = Image.new('RGB', (1280, 720), color=warna_cadangan[i % len(warna_cadangan)])
+        img.save(file_img)
+        file_gambar_list.append(file_img)
             
     return file_gambar_list
 
@@ -140,7 +127,7 @@ async def buat_video_mp4_dinamis(file_audio: str, file_video_output: str):
     video_final.close()
 
 async def mulai_atau_tes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📚 **Bot Cloud Aktif!**\n\nSilakan kirim file PDF buku Anda langsung ke chat ini.")
+    await update.message.reply_text("📚 **Bot (Powered by ChatGPT) Aktif!**\n\nSilakan kirim file PDF buku Anda ke sini.")
 
 async def terima_file_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global buku_path_tersimpan
@@ -162,7 +149,7 @@ async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not buku_path_tersimpan or not os.path.exists(buku_path_tersimpan):
         await query.edit_message_text(text="⚠️ File PDF tidak ditemukan. Kirim ulang file PDF Anda.")
         return
-    await query.edit_message_text(text="🧠 Gemini sedang membaca & menganalisis seluruh halaman buku Anda...")
+    await query.edit_message_text(text="🧠 ChatGPT sedang menganalisis halaman buku Anda (proses ini mungkin butuh 1-2 menit)...")
     try:
         teks_ai = await asyncio.to_thread(baca_dan_rangkum_pdf, buku_path_tersimpan)
         pecah = teks_ai.split("\n", 1)
@@ -172,7 +159,7 @@ async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_audio = "ringkasan_audio.mp3"
         await buat_audio_lengkap(naskah, file_audio)
         
-        await context.bot.send_message(chat_id=chat_id, text="🎬 Merender Video MP4 berdurasi penuh dengan latar belakang dinamis...")
+        await context.bot.send_message(chat_id=chat_id, text="🎬 Merender Video MP4 berdurasi penuh...")
         file_video = "video_full_buku.mp4"
         await buat_video_mp4_dinamis(file_audio, file_video)
         
@@ -184,11 +171,9 @@ async def tombol_pdf_diklik(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def jalankan_bot():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", mulai_atau_tes))
-    app.add_handler(CommandHandler("tes", mulai_atau_tes))
     app.add_handler(MessageHandler(filters.Document.PDF, terima_file_pdf))
     app.add_handler(CallbackQueryHandler(tombol_pdf_diklik))
     print("🤖 BOT CLOUD SIAP MENERIMA PDF!")
-    
     app.run_polling()
 
 if __name__ == "__main__":
