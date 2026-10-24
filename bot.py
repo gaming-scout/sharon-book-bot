@@ -5,6 +5,8 @@ import nest_asyncio
 import requests
 from PyPDF2 import PdfReader
 from PIL import Image
+if not hasattr(Image, 'ANTIALIAS'):
+    Image.ANTIALIAS = Image.LANCZOS
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
