@@ -47,8 +47,14 @@ def baca_dan_rangkum_pdf(file_path):
     5. Di baris paling pertama, tulis salah satu mood musik ini saja: INSPIRATIONAL atau CALM atau SERIOUS, lalu ganti baris untuk isi naskahnya.
     """
     
-    # PERBAIKAN FINAL: Gunakan model terbaru yang didukung oleh SDK 0.3.0
-    model_list = ["gemini-2.0-flash", "gemini-1.5-pro"]
+    # PERBAIKAN: Daftar semua varian nama agar pasti ada yang tembus
+    model_list = [
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-pro-latest",
+        "gemini-1.5-flash-002",
+        "gemini-1.5-pro-002",
+        "gemini-1.5-flash"
+    ]
     pesan_error_asli = ""
     
     file_part = types.Part.from_uri(
@@ -56,25 +62,23 @@ def baca_dan_rangkum_pdf(file_path):
         mime_type="application/pdf"
     )
     
-    for attempt in range(3):
-        for m in model_list:
-            try:
-                response = client.models.generate_content(
-                    model=m, 
-                    contents=[file_part, prompt]
-                )
-                if response.text:
-                    return response.text.strip()
-            except Exception as e:
-                pesan_error_asli = str(e)
-                print(f"Percobaan gagal pada model {m}: {pesan_error_asli}")
-                time.sleep(3)
-        time.sleep(5)
-        
-    raise Exception(f"Gagal memproses AI. Detail: {pesan_error_asli}")
-async def buat_audio_lengkap(naskah: str, nama_file_output: str):
-    file_suara = "voiceover_temp.mp3"
-    berhasil_eleven = False
+    # Loop ini akan mencoba semua nama model satu per satu
+    for m in model_list:
+        try:
+            print(f"Mencoba menggunakan model: {m}...")
+            response = client.models.generate_content(
+                model=m, 
+                contents=[file_part, prompt]
+            )
+            if response.text:
+                print(f"Berhasil menggunakan model {m}!")
+                return response.text.strip()
+        except Exception as e:
+            pesan_error_asli = str(e)
+            print(f"Gagal di {m}: {pesan_error_asli}")
+            time.sleep(2) # Jeda sejenak sebelum mencoba model berikutnya
+            
+    raise Exception(f"Semua model gagal diakses. Detail: {pesan_error_asli}")
 
     if ELEVENLABS_API_KEY and VOICE_ID:
         try:
