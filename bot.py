@@ -28,13 +28,13 @@ def baca_dan_rangkum_pdf(file_path):
     print("Mengunggah PDF ke Gemini...")
     berkas_terupload = client.files.upload(path=file_path)
     
-    # Tunggu sampai Gemini selesai memproses PDF
-    while berkas_terupload.state.name == "PROCESSING":
+    # PERBAIKAN: Hapus .name pada berkas_terupload.state
+    while berkas_terupload.state == "PROCESSING":
         print("Menunggu PDF diproses oleh Gemini...")
         time.sleep(3)
         berkas_terupload = client.files.get(name=berkas_terupload.name)
         
-    if berkas_terupload.state.name == "FAILED":
+    if berkas_terupload.state == "FAILED":
         raise Exception("Server Gemini gagal memproses dokumen PDF ini.")
 
     prompt = """
@@ -46,6 +46,23 @@ def baca_dan_rangkum_pdf(file_path):
     4. JANGAN menulis keterangan [Musik masuk], tanda bintang (*), atau pagar (#). Tulis HANYA teks narasi bersih.
     5. Di baris paling pertama, tulis salah satu mood musik ini saja: INSPIRATIONAL atau CALM atau SERIOUS, lalu ganti baris untuk isi naskahnya.
     """
+    
+    model_list = ["gemini-1.5-flash"]
+    pesan_error_asli = ""
+    
+    for attempt in range(3):
+        for m in model_list:
+            try:
+                response = client.models.generate_content(model=m, contents=[berkas_terupload, prompt])
+                if response.text:
+                    return response.text.strip()
+            except Exception as e:
+                pesan_error_asli = str(e)
+                print(f"Percobaan gagal pada model {m}: {pesan_error_asli}")
+                time.sleep(3)
+        time.sleep(5)
+        
+    raise Exception(f"Gagal memproses AI. Detail: {pesan_error_asli}")
     
     model_list = ["gemini-1.5-flash"]
     pesan_error_asli = ""
