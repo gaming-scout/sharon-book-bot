@@ -26,8 +26,8 @@ buku_path_tersimpan = None
 
 def baca_dan_rangkum_pdf(file_path):
     print("Mengunggah PDF ke Gemini...")
-    # Gunakan pemanggilan langsung tanpa keyword 'path=' atau 'file='
-    berkas_utama = client.files.upload(file_path)
+    # Kembalikan menggunakan keyword path=
+    berkas_utama = client.files.upload(path=file_path)
     
     cek_file = client.files.get(name=berkas_utama.name)
     while cek_file.state == "PROCESSING":
