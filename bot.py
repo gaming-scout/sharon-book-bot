@@ -24,7 +24,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 buku_path_tersimpan = None
 
 def baca_dan_rangkum_pdf(file_path):
-    berkas_terupload = client.files.upload(file=file_path)
+    berkas_terupload = client.files.upload(path=file_path)
     prompt = """
     Analisis buku lengkap ini dari awal sampai akhir. Buatlah naskah voiceover Bahasa Indonesia yang sangat mendalam, detail, dan komprehensif sebagai rangkuman utuh buku ini.
     Aturan Naskah:
