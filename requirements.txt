@@ -1,6 +1,6 @@
 python-telegram-bot>=21.6
 moviepy==1.0.3
-Pillow>=11.0.0
+Pillow==9.5.0
 requests==2.31.0
 nest-asyncio==1.6.0
 openai==1.52.0
