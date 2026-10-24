@@ -26,7 +26,6 @@ buku_path_tersimpan = None
 
 def baca_dan_rangkum_pdf(file_path):
     print("Mengunggah PDF ke Gemini...")
-    # Kembalikan menggunakan keyword path=
     berkas_utama = client.files.upload(path=file_path)
     
     cek_file = client.files.get(name=berkas_utama.name)
@@ -48,11 +47,10 @@ def baca_dan_rangkum_pdf(file_path):
     5. Di baris paling pertama, tulis salah satu mood musik ini saja: INSPIRATIONAL atau CALM atau SERIOUS, lalu ganti baris untuk isi naskahnya.
     """
     
-    model_list = ["gemini-1.5-flash"]
+    # PERBAIKAN FINAL: Gunakan model terbaru yang didukung oleh SDK 0.3.0
+    model_list = ["gemini-2.0-flash", "gemini-1.5-pro"]
     pesan_error_asli = ""
     
-    # PERBAIKAN: Bungkus file secara eksplisit menjadi tipe "Part" 
-    # agar SDK tidak bingung dan tidak mengirimkan data kosong.
     file_part = types.Part.from_uri(
         file_uri=cek_file.uri,
         mime_type="application/pdf"
@@ -61,7 +59,6 @@ def baca_dan_rangkum_pdf(file_path):
     for attempt in range(3):
         for m in model_list:
             try:
-                # Masukkan file_part yang sudah dibungkus ke dalam contents
                 response = client.models.generate_content(
                     model=m, 
                     contents=[file_part, prompt]
@@ -75,7 +72,6 @@ def baca_dan_rangkum_pdf(file_path):
         time.sleep(5)
         
     raise Exception(f"Gagal memproses AI. Detail: {pesan_error_asli}")
-
 async def buat_audio_lengkap(naskah: str, nama_file_output: str):
     file_suara = "voiceover_temp.mp3"
     berhasil_eleven = False
