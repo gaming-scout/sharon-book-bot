@@ -121,7 +121,7 @@ async def buat_video_mp4_dinamis(file_audio: str, file_video_output: str):
     jumlah_scene = 6
     file_gambar_list = buat_beberapa_gambar(jumlah_scene)
     durasi_per_scene = total_durasi / jumlah_scene
-    klip_scene = [ImageClip(img).set_duration(durasi_per_scene).resize(lambda t: 1.0 + 0.05 * (t / durasi_per_scene)) for img in file_gambar_list]
+    klip_scene = [ImageClip(img).set_duration(durasi_per_scene) for img in file_gambar_list]
     video_gabungan = concatenate_videoclips(klip_scene, method="compose")
     video_final = video_gabungan.set_audio(audio_clip)
     video_final.write_videofile(file_video_output, fps=24, codec='libx264', audio_codec='aac', preset='ultrafast', logger=None)
